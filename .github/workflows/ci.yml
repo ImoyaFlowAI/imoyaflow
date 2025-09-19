@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: imoya
+          POSTGRES_PASSWORD: imoya
+          POSTGRES_DB: imoya_flow_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U imoya -d imoya_flow_ci"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      DATABASE_URL: postgresql://imoya:imoya@localhost:5432/imoya_flow_ci?schema=public
+      N8N_BASE_URL: https://example.invalid
+      N8N_API_KEY: dummy
+      WEBHOOK_SIGNING_SECRET: test_secret
+      NODE_ENV: test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Use Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma Client
+        working-directory: apps/backend
+        run: pnpm prisma generate
+
+      - name: Run database migrations
+        working-directory: apps/backend
+        run: pnpm prisma migrate deploy
+
+      - name: Lint code
+        run: pnpm -r lint || true
+
+      - name: Type check
+        run: pnpm -r type-check
+
+      - name: Build applications
+        run: pnpm -r build
+
+      - name: Run tests
+        run: pnpm -r test --if-present
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v3
+        if: success()
+        with:
+          files: ./coverage/lcov.info
+          fail_ci_if_error: false

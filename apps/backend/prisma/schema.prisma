@@ -1,0 +1,88 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id            String   @id @default(cuid())
+  name          String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  forms         Form[]
+  credentials   Credential[]
+}
+
+model Form {
+  id            String   @id
+  title         String
+  schemaJson    Json
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenantId      String?
+  tenant        Tenant?  @relation(fields: [tenantId], references: [id])
+
+  automations   Automation[]
+  compiled      CompiledWorkflow?
+  runs          RunSummary[]
+}
+
+model Automation {
+  id          String   @id @default(cuid())
+  type        String   // "send_email" | "append_sheet" | "slack_notify"
+  whenExpr    String?  // e.g. "{{orderTotal}} > 500"
+  configJson  Json
+
+  formId      String
+  form        Form     @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model CompiledWorkflow {
+  id          String   @id @default(cuid())
+  name        String
+  n8nJson     Json     // full compiled JSON
+  webhookPath String   // e.g., "forms/abcd1234"
+  n8nWorkflowId String? // optional – id returned by n8n on create
+
+  formId      String   @unique
+  form        Form     @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Credential {
+  id          String   @id @default(cuid())
+  provider    String   // "gmail" | "gsheets" | "slack" | ...
+  label       String
+  // Store **only** encrypted blobs/tokens (no plain secrets):
+  encryptedJson String
+
+  tenantId    String?
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id])
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model RunSummary {
+  id          String   @id @default(cuid())
+  status      String   // "success" | "error" | "running"
+  startedAt   DateTime
+  finishedAt  DateTime?
+  summaryJson Json?
+
+  formId      String
+  form        Form     @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
